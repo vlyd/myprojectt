@@ -6,11 +6,11 @@ SECRET_KEY = 'django-insecure-*g^f)6^jj=!%nu83=h1uycyd@0pwesgd0(1k@f9h(8mgou3h$i
 
 DEBUG = True
 
-ALLOWED_HOSTS = ['*']  # Для разработки
+ALLOWED_HOSTS = ['*']
 
 # Application definition
 INSTALLED_APPS = [
-    'corsheaders',  # 👈 ДОБАВЛЕНО
+    'corsheaders',
     'rest_framework',
     'api',
     'drf_yasg',
@@ -24,30 +24,47 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',  # 👈 ДОЛЖЕН БЫТЬ ПЕРВЫМ
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
-    'django.contrib.auth.middleware.AuthenticationMiddleware',
-    'django.contrib.messages.middleware.MessageMiddleware',
+    'django.contrib.auth.middleware.AuthenticationMiddleware',      # ← ОБЯЗАТЕЛЬНО!
+    'django.contrib.messages.middleware.MessageMiddleware',        # ← ОБЯЗАТЕЛЬНО!
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
 ROOT_URLCONF = 'myproject.urls'
 
-# 👇 ИСПРАВЛЕННЫЕ НАСТРОЙКИ CORS
+# CORS настройки
 CORS_ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Vue default port
+    "http://localhost:5173",
     "http://127.0.0.1:5173",
 ]
 
-# Или для разработки:
-CORS_ALLOW_ALL_ORIGINS = True  # Временно разрешить все (только для разработки!)
-
+CORS_ALLOW_ALL_ORIGINS = True
 CORS_ALLOW_CREDENTIALS = True
-CORS_ALLOW_METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
-CORS_ALLOW_HEADERS = ['*']
+
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
 TEMPLATES = [
     {
@@ -88,22 +105,25 @@ AUTH_PASSWORD_VALIDATORS = [
     },
 ]
 
-# 👇 ВРЕМЕННО УПРОЩЕННЫЕ НАСТРОЙКИ DRF
+# DRF настройки
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework.authentication.SessionAuthentication',
-
         'rest_framework.authentication.BasicAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',  # Разрешить всем (для разработки)
+        'rest_framework.permissions.AllowAny',
     ]
-    
 }
 
-LANGUAGE_CODE = 'en-us'
-TIME_ZONE = 'UTC'
+# Кастомная модель пользователя
+AUTH_USER_MODEL = 'api.User'
+
+LANGUAGE_CODE = 'ru-ru'
+TIME_ZONE = 'Europe/Moscow'
 USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
