@@ -95,12 +95,3 @@ class ActiveConnectionSerializer(serializers.ModelSerializer):
             'bytes_sent', 'bytes_received', 'is_active'
         ]
         read_only_fields = ['id', 'connected_at', 'last_activity']
-
-
-# ============= ДОБАВИТЬ ЭТОТ КЛАСС =============
-class CreateTokenSerializer(serializers.Serializer):
-    """
-    Сериализатор для создания токена (упрощенный)
-    Не требует никаких параметров
-    """
-    pass

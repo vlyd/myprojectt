@@ -1,4 +1,3 @@
-# api/views.py
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -7,11 +6,12 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils import timezone
 import uuid
 import datetime
-from .models import User, ProxyToken, VPSServer, ActiveConnection
+from .models import User, ProxyToken, VPSServer, ActiveConnection, EmailVerificationToken
 from .serializers import (
     RegisterSerializer, LoginSerializer, UserSerializer,
     ProxyTokenSerializer, VPSServerSerializer, ActiveConnectionSerializer
 )
+from .utils import generate_verification_token, send_verification_email, resend_verification_email
 
 
 # ============= АУТЕНТИФИКАЦИЯ =============
@@ -20,15 +20,29 @@ from .serializers import (
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def register(request):
-    """Регистрация нового пользователя"""
+    """Регистрация нового пользователя с отправкой подтверждения на email"""
     serializer = RegisterSerializer(data=request.data)
+
     if serializer.is_valid():
         user = serializer.save()
+
+        # Генерируем токен подтверждения
+        token = generate_verification_token(user)
+
+        # Отправляем письмо с подтверждением
+        send_verification_email(user, token)
+
         return Response({
             'success': True,
-            'message': 'Пользователь успешно зарегистрирован',
-            'user': UserSerializer(user).data
+            'message': 'Регистрация успешна! На вашу почту отправлен код подтверждения.',
+            'user': {
+                'id': str(user.id),
+                'username': user.username,
+                'email': user.email,
+                'is_verified': user.is_verified,
+            }
         }, status=201)
+
     return Response(serializer.errors, status=400)
 
 
@@ -36,11 +50,21 @@ def register(request):
 @api_view(['POST'])
 @permission_classes([AllowAny])
 def login(request):
-    """Авторизация пользователя"""
+    """Авторизация пользователя с проверкой подтверждения email"""
     serializer = LoginSerializer(data=request.data, context={'request': request})
 
     if serializer.is_valid():
         user = serializer.validated_data['user']
+
+        # Проверяем, подтвержден ли email
+        if not user.is_verified:
+            return Response({
+                'success': False,
+                'message': 'Email не подтвержден. Проверьте почту или запросите новый код.',
+                'need_verification': True,
+                'email': user.email
+            }, status=401)
+
         auth_login(request, user)
 
         return Response({
@@ -52,7 +76,7 @@ def login(request):
                 'email': user.email,
                 'phone': getattr(user, 'phone', ''),
                 'balance': float(getattr(user, 'balance', 0)),
-                'is_verified': getattr(user, 'is_verified', False),
+                'is_verified': user.is_verified,
             }
         }, status=200)
 
@@ -65,6 +89,77 @@ def me(request):
     """Получить информацию о текущем пользователе"""
     serializer = UserSerializer(request.user)
     return Response(serializer.data)
+
+
+# ============= ПОДТВЕРЖДЕНИЕ EMAIL =============
+
+@api_view(['GET'])
+@permission_classes([AllowAny])
+def verify_email(request, token):
+    """Подтверждение email по токену"""
+    try:
+        verification_token = EmailVerificationToken.objects.get(token=token)
+
+        if not verification_token.is_valid:
+            return Response({
+                'success': False,
+                'message': 'Срок действия ссылки истек. Запросите новую.',
+                'need_resend': True
+            }, status=400)
+
+        user = verification_token.user
+        user.is_verified = True
+        user.save()
+
+        # Удаляем использованный токен
+        verification_token.delete()
+
+        return Response({
+            'success': True,
+            'message': 'Email успешно подтвержден! Теперь вы можете войти в систему.'
+        }, status=200)
+
+    except EmailVerificationToken.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'Неверный или просроченный токен.'
+        }, status=404)
+
+
+@api_view(['POST'])
+@permission_classes([AllowAny])
+def resend_verification(request):
+    """Повторная отправка письма с подтверждением"""
+    email = request.data.get('email')
+
+    if not email:
+        return Response({
+            'success': False,
+            'message': 'Email не указан'
+        }, status=400)
+
+    try:
+        user = User.objects.get(email=email)
+
+        if user.is_verified:
+            return Response({
+                'success': False,
+                'message': 'Email уже подтвержден'
+            }, status=400)
+
+        # Генерируем новый токен и отправляем письмо
+        resend_verification_email(user)
+
+        return Response({
+            'success': True,
+            'message': 'Код подтверждения отправлен повторно! Проверьте почту.'
+        }, status=200)
+
+    except User.DoesNotExist:
+        return Response({
+            'success': False,
+            'message': 'Пользователь с таким email не найден'
+        }, status=404)
 
 
 # ============= УПРАВЛЕНИЕ ТОКЕНАМИ =============
@@ -160,20 +255,17 @@ def connect_by_token(request):
         if not token.is_valid:
             return Response({'error': 'Токен недействителен'}, status=401)
 
-        # Проверяем, не используется ли токен
         if ActiveConnection.objects.filter(token=token, is_active=True).exists():
             return Response({'error': 'Токен уже используется'}, status=401)
 
-        # Ищем свободный сервер
         server = VPSServer.objects.filter(status='free').first()
 
         if not server:
             return Response({'error': 'Нет свободных серверов'}, status=503)
 
-        # Удаляем старую запись для этого сервера (чтобы избежать UNIQUE constraint)
+        # Удаляем старую запись для этого сервера
         ActiveConnection.objects.filter(server=server).delete()
 
-        # Создаем новое подключение
         connection = ActiveConnection.objects.create(
             token=token,
             server=server,
@@ -182,7 +274,6 @@ def connect_by_token(request):
             is_active=True
         )
 
-        # Занимаем сервер
         server.status = 'busy'
         server.busy_since = timezone.now()
         server.total_connections += 1
@@ -242,12 +333,10 @@ def disconnect(request):
         else:
             return Response({'error': 'Не указан connection_id или token'}, status=400)
 
-        # Отключаем
         connection.is_active = False
         connection.disconnected_at = timezone.now()
         connection.save()
 
-        # Освобождаем сервер
         server = connection.server
         server.status = 'free'
         server.busy_since = None

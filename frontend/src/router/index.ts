@@ -23,10 +23,14 @@ const router = createRouter({
       path: '/profile',
       name: 'profile',
       component: () => import('../views/ProfileView.vue')
+    },
+    {
+      // ✅ ЭТОТ МАРШРУТ ДОЛЖЕН БЫТЬ!
+      path: '/verify-email/:token',
+      name: 'verify-email',
+      component: () => import('../views/VerifyEmailView.vue')
     }
   ]
-
-
 })
 
 export default router

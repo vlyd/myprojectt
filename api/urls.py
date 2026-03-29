@@ -1,4 +1,3 @@
-# api/urls.py
 from django.urls import path
 from . import views
 
@@ -7,6 +6,10 @@ urlpatterns = [
     path('register/', views.register, name='register'),
     path('login/', views.login, name='login'),
     path('me/', views.me, name='me'),
+
+    # Подтверждение email
+    path('verify-email/<str:token>/', views.verify_email, name='verify-email'),
+    path('resend-verification/', views.resend_verification, name='resend-verification'),
 
     # Управление токенами
     path('tokens/create/', views.create_token, name='create-token'),
